@@ -89,3 +89,15 @@ int32_t adsp_lfo_process(lfo_params_t *module, int32_t in)
     int32_t out = lfo_state.sine_lut[lut_idx];
     return out;
 }
+
+int32_t adsp_lfo_process_interp(lfo_params_t *module, int32_t in)
+{
+    (void)in; (void)module; // avoid unused parameter warnings, compiler should optimize out
+    uint32_t lut_idx = lfo_state.phase >> LUT_SHR;
+    uint32_t frac = (lfo_state.phase & ((1U << LUT_SHR) - 1)) << 7; // Q27
+    int32_t y0 = lfo_state.sine_lut[lut_idx];
+    int32_t y1 = lfo_state.sine_lut[(lut_idx + 1) & (LUT_SIZE-1)];
+    int32_t out = y0 + (int32_t)(((int64_t)(y1 - y0) * frac) >> 27);
+    lfo_state.phase += lfo_state.phase_acc;
+    return out;
+}
