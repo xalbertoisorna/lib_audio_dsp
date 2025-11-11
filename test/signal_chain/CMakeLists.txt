@@ -179,3 +179,25 @@ set(APP_C_SRCS src/router_4to1.c)
 set(XMOS_SANDBOX_DIR ${CMAKE_SOURCE_DIR}/../../..)
 
 XMOS_REGISTER_APP()
+
+
+project(low_freq_osc_test)
+
+set(APP_HW_TARGET XCORE-AI-EXPLORER)
+
+set(APP_COMPILER_FLAGS
+    -O3
+    -g
+    -report
+    -Wall
+    -Werror
+    -fxscope
+    -fcmdline-buffer-bytes=1024
+)
+
+set(APP_DEPENDENT_MODULES lib_audio_dsp)
+set(APP_C_SRCS src/lowfreq_osc.c)
+
+set(XMOS_SANDBOX_DIR ${CMAKE_SOURCE_DIR}/../../..)
+
+XMOS_REGISTER_APP()

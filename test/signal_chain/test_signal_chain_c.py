@@ -8,9 +8,12 @@ import subprocess
 import audio_dsp.dsp.signal_chain as sc
 from audio_dsp.dsp.generic import Q_SIG
 import audio_dsp.dsp.signal_gen as gen
+import audio_dsp.dsp.low_freq_osc as lfo
+
 import pytest
 from test.test_utils import xdist_safe_bin_write, float_to_qxx, qxx_to_float, q_convert_flt
 
+cwd = Path(__file__).parent.absolute()
 bin_dir = Path(__file__).parent / "bin"
 gen_dir = Path(__file__).parent / "autogen"
 
@@ -60,6 +63,17 @@ def get_c_wav(dir_name, comp_name, verbose=False, sim = True):
   sf.write(gen_dir / "sig_c.wav", sig_fl, fs, "PCM_24")
   return sig_fl
 
+def get_c_wav2(dir_name, run_cmd, verbose=False):
+  stdout = subprocess.check_output(run_cmd)
+  if verbose: print("run msg:\n", stdout.decode())
+
+  sig_bin = dir_name / "sig_out.bin"
+  assert sig_bin.is_file(), f"Could not find output bin {sig_bin}"
+  sig_int = np.fromfile(sig_bin, dtype=np.int32)
+
+  sig_fl = qxx_to_float(sig_int)
+  sf.write(gen_dir / "sig_c.wav", sig_fl, fs, "PCM_24")
+  return sig_fl
 
 def write_gain(test_dir, gain):
   all_filt_info = np.empty(0, dtype=np.int32)
@@ -289,6 +303,85 @@ def test_router_4to1_c(in_signal, channel_states):
     np.testing.assert_allclose(out_c, out_py, rtol=0, atol=0)
 
 
+def lfo_write_params(params_file, in_file, fs, frequency, amplitude, ph_offset, samples):
+  with open(params_file, "w") as f:
+    f.write(f"{fs},{frequency},{amplitude},{ph_offset},{samples}\n")
+
+  with open(in_file, "w") as f:
+    f.write("empty on purpose for now\n")  
+
+@pytest.mark.parametrize("frequency", [0.0999, 0.1, 0.997, 1.0, 9.97, 10, 11.24, 20, 44, 100])
+@pytest.mark.parametrize("amplitude", [1.0])
+def test_low_freq_osc(frequency, amplitude):
+  duration = 2.0
+  phase_offset = 0.2
+  num_samples = int(fs * duration)
+  t = np.arange(num_samples) / fs
+  
+  gen = lfo.low_freq_osc(fs, frequency=frequency, phase_offset=phase_offset, amplitude=amplitude)
+
+  test_dir = bin_dir / f"low_freq_osc_{frequency}"
+  test_dir.mkdir(exist_ok = True, parents = True)
+
+  # create dirs and write params
+  bin_path = bin_dir / "low_freq_osc_test.xe"
+  file_in = test_dir / "sig_in.bin"
+  file_out = test_dir / "sig_out.bin"
+  file_params = test_dir / "params.txt"
+
+  lfo_write_params(
+    file_params, file_in, 
+    fs=fs, frequency=frequency, amplitude=amplitude, 
+    ph_offset=phase_offset, samples=num_samples
+  )
+
+  # python ideal
+  ideal = gen.process_samples(num_samples)
+  ideal = np.array(ideal, dtype=float)
+
+  # py xcore
+  out_py = gen.process_xcore_samples(num_samples)
+  out_py = np.array(out_py, dtype=np.float32)
+
+  # c xcore
+  run_cmd = [
+    "xsim",
+    "--args",
+    bin_path.relative_to(cwd),
+    file_in.relative_to(cwd),
+    file_params.relative_to(cwd),
+    file_out.relative_to(cwd),
+  ]
+  out_c = get_c_wav2(test_dir, run_cmd)
+  out_c = np.array(out_c, dtype=np.float32)
+
+  # cleanup and compare
+  shutil.rmtree(test_dir)
+
+  # tols
+  rtol = 0.0
+  atol = 1e-7       #TODO reduce to 0
+  thdn_tol = -60.0  #TODO reduce
+
+  if frequency > 19:
+    atol = 5e-6      #TODO reduce to 0
+    thdn_tol = -40.0 #TODO reduce
+  
+  # direct compare 
+  np.testing.assert_allclose(out_c, out_py, rtol=rtol, atol=atol) #TODO reduce to 0
+
+  # thdn compare 
+  residual = out_py - ideal
+  power_signal, power_noise = np.mean(ideal ** 2), np.mean(residual ** 2)
+  thdn = np.sqrt(power_noise / power_signal)
+  thdn_db = 20 * np.log10(thdn)
+  print(f"LFO Freq: {frequency} Hz, THD+N: {thdn_db:.2f} dB")
+  
+  assert thdn_db <= thdn_tol
+
+
+
+
 if __name__ =="__main__":
   bin_dir.mkdir(exist_ok=True, parents=True)
   gen_dir.mkdir(exist_ok=True, parents=True)
@@ -300,4 +393,5 @@ if __name__ =="__main__":
   #test_mixer_c(sig_fl, -3)
   # test_volume_control_c(sig_fl, [0, -6, 6], 7, False)
   # test_switch_slew_c(sig_fl)
-  test_crossfader_c(sig_fl, 0.1)
+  # test_crossfader_c(sig_fl, 0.1)
+  test_low_freq_osc(1.0)

@@ -4,6 +4,7 @@ import pytest
 import numpy as np
 import audio_dsp.dsp.signal_chain as sc
 import audio_dsp.dsp.signal_gen as gen
+import audio_dsp.dsp.low_freq_osc as lfo
 import audio_dsp.dsp.utils as utils
 import audio_dsp.dsp.generic as dspg
 from audio_dsp.dsp.generic import HEADROOM_DB
@@ -378,6 +379,32 @@ def test_switch_slew():
         assert mean_error_flt < 0.055
 
     pass
+
+@pytest.mark.parametrize("fs", [48000, 36000])
+@pytest.mark.parametrize("frequency", [0.0999, 0.1, 0.997, 1.0, 9.97, 10, 99.7, 100])
+@pytest.mark.parametrize("amplitude", [1.0, 0.5])
+@pytest.mark.parametrize("phase_offset", [0.1, np.pi/4, np.pi/2, np.pi])
+def test_low_freq_osc(fs, frequency, amplitude, phase_offset):
+    duration = 2.0
+    num_samples = int(fs * duration)
+    
+    # Create the LFO instance
+    osc = lfo.low_freq_osc(fs, frequency=frequency, amplitude=amplitude, phase_offset=phase_offset)
+    
+    output_python = np.zeros(num_samples, dtype=np.float32)
+    output_xcore = np.zeros(num_samples, dtype=np.float32)
+    
+    # Generate both outputs
+    for n in range(num_samples):
+        output_python[n] = osc.process(0.0)
+        output_xcore[n] = osc.process_xcore(0.0)
+    
+    # so just check average error of top half
+    top_half = utils.db(output_python) > -50
+    if np.any(top_half):
+        error_flt = np.abs(utils.db(output_xcore[top_half]) - utils.db(output_python[top_half]))
+        mean_error_flt = utils.db(np.nanmean(utils.db2gain(error_flt)))
+        assert mean_error_flt < 0.055
 
 
 if __name__ == "__main__":
