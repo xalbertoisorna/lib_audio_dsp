@@ -389,7 +389,7 @@ def test_low_freq_osc(fs, frequency, amplitude, phase_offset):
     num_samples = int(fs * duration)
     
     # Create the LFO instance
-    osc = lfo.low_freq_osc(fs, frequency=frequency, amplitude=amplitude, phase_offset=phase_offset)
+    osc = lfo.low_freq_osc(fs, 1, frequency=frequency, amplitude=amplitude, phase_offset=phase_offset)
     
     output_python = np.zeros(num_samples, dtype=np.float32)
     output_xcore = np.zeros(num_samples, dtype=np.float32)

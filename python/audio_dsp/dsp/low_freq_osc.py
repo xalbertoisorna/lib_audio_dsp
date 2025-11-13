@@ -1,11 +1,12 @@
 import numpy as np
-from pathlib import Path
-import math
+from audio_dsp.dsp import utils as utils
+from audio_dsp.dsp.generic import dsp_block, Q_SIG
 
-class low_freq_osc():
+class low_freq_osc(dsp_block):
     def __init__(
             self, 
             fs: float,            # in Hz 
+            n_chans : int,        # number of channels
             frequency: float,     # in Hz
             amplitude: float,     # amplitude
             phase_offset: float,  # starting phase in rad
@@ -14,6 +15,7 @@ class low_freq_osc():
         self.fs = fs
         self.frequency = frequency
         self.amplitude = amplitude
+        self.Q_sig = Q_SIG
         
         # Python related
         self.phase_inc = (2 * np.pi * self.frequency) / self.fs

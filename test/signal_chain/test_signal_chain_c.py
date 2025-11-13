@@ -319,7 +319,7 @@ def test_low_freq_osc(frequency, amplitude):
   num_samples = int(fs * duration)
   t = np.arange(num_samples) / fs
   
-  gen = lfo.low_freq_osc(fs, frequency=frequency, phase_offset=phase_offset, amplitude=amplitude)
+  gen = lfo.low_freq_osc(fs, 1, frequency=frequency, phase_offset=phase_offset, amplitude=amplitude)
 
   test_dir = bin_dir / f"low_freq_osc_{frequency}"
   test_dir.mkdir(exist_ok = True, parents = True)
@@ -397,4 +397,3 @@ if __name__ =="__main__":
   # test_volume_control_c(sig_fl, [0, -6, 6], 7, False)
   # test_switch_slew_c(sig_fl)
   # test_crossfader_c(sig_fl, 0.1)
-  test_low_freq_osc(1.0)
