@@ -314,10 +314,9 @@ def lfo_write_params(params_file, in_file, fs, frequency, amplitude, ph_offset, 
 @pytest.mark.parametrize("frequency", [0.0999, 0.1, 0.997, 1.0, 9.97, 10, 11.24, 20, 44, 100])
 @pytest.mark.parametrize("amplitude", [1.0])
 def test_low_freq_osc(frequency, amplitude):
-  duration = 2.0
+  duration = 1.2
   phase_offset = 0.2
   num_samples = int(fs * duration)
-  t = np.arange(num_samples) / fs
   
   gen = lfo.low_freq_osc(fs, 1, frequency=frequency, phase_offset=phase_offset, amplitude=amplitude)
 
@@ -338,50 +337,55 @@ def test_low_freq_osc(frequency, amplitude):
 
   # python ideal
   ideal = gen.process_samples(num_samples)
-  ideal = np.array(ideal, dtype=float)
 
   # py xcore
   out_py = gen.process_xcore_samples(num_samples)
-  out_py = np.array(out_py, dtype=np.float32)
 
   # c xcore
   run_cmd = [
     "xsim",
+    "--xscope",
+    "-offline trace.xmt",
     "--args",
     bin_path.relative_to(cwd),
     file_in.relative_to(cwd),
     file_params.relative_to(cwd),
     file_out.relative_to(cwd),
   ]
-  out_c = get_c_wav2(test_dir, run_cmd)
-  out_c = np.array(out_c, dtype=np.float32)
+  out_c = get_c_wav2(test_dir, run_cmd, verbose=True)
 
   # cleanup and compare
   shutil.rmtree(test_dir)
 
   # tols
-  rtol = 0.0
-  atol = 1e-7       #TODO reduce to 0
-  thdn_tol = -60.0  #TODO reduce
+  rtol = 7.5e-9   #q27 limit
+  atol = 7.5e-9   #q27 limit
+  thdn_tol = -62.0  #TODO reduce
 
-  if frequency >= 20: # LUT steps are more visible at high freq
-    atol = 5e-6      #TODO reduce to 0
-    thdn_tol = -40.0 #TODO reduce
-  
-  if frequency >= 80: # Not really recommended to use for now
-    atol = 2e-3      #TODO reduce to 0
-    rtol = 2e-3      #TODO reduce to 0
+  # diffs
+  diff = np.abs(out_c - out_py)
 
-  # direct compare 
-  np.testing.assert_allclose(out_c, out_py, rtol=rtol, atol=atol) #TODO reduce to 0
-
-  # thdn compare 
+  # thdn 
   residual = out_c - ideal
-  power_signal, power_noise = np.mean(ideal ** 2), np.mean(residual ** 2)
+  power_signal, power_noise = np.mean(out_c ** 2), np.mean(residual ** 2)
   thdn = np.sqrt(power_noise / power_signal)
   thdn_db = 20 * np.log10(thdn)
-  assert thdn_db <= thdn_tol
+  thdn_db = np.round(thdn_db)
+  
+  # mse
+  mse = np.mean((out_c - out_py) ** 2)
+  mse = np.round(mse)
 
+  print(f"\n=== LFO Test Results ===")
+  print(f"Frequency (Hz):       {frequency:.8e}")
+  print(f"MSE (pyxc - c):       {mse:.8e}")
+  print(f"THD+N (dB):           {thdn_db:.8e}")
+  print(f"Max abs diff:         {np.max(diff):.8e}")
+  print(f"Mean abs diff:        {np.mean(diff):.8e}")
+  print("=" * 32)
+
+  np.testing.assert_allclose(out_c, out_py, rtol=rtol, atol=atol, verbose=True) #TODO reduce to 0
+  np.testing.assert_array_less(thdn_db, thdn_tol, verbose=True) #TODO reduce
 
 
 

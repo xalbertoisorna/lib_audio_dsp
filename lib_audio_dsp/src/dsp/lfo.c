@@ -7,9 +7,7 @@
 
 #include "dsp/adsp.h"
 #include "control/helpers.h"
-
-#define LUT_SIZE (1 << LUT_BITS)
-#define LUT_SHR (32 - LUT_BITS)
+#include "lfo_sine_lut_q27.h"
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -19,26 +17,13 @@
 #define Q_SIG 27
 #endif
 
-/* TODO
-
-    - to discuss LFO frequency and fs limits
-    - to discuss amplitude limits
-    - to dicuss the global state approachwith im not quite happy but is practical for now
-
-    - there is no reset, control, etc... to improve
-    - LUT resolution needs memory, about 16KB for 12bits which can be a lot. 
-    Depending on frecuency we could have different LUT sizes to save memory.
-    - currently only sine wave is supported 
-    - there is no slew rate limiting on frequency or amplitude changes
-
-*/
-
 // Internal globals
 static struct
 {
     uint32_t phase;                 
     uint32_t phase_acc;             
-    int32_t sine_lut[LUT_SIZE];
+    int32_t *sine_lut_ptr;
+    int32_t amplitude_q27;
 } lfo_state;
 
 // Verify params
@@ -65,39 +50,47 @@ lfo_params_t adsp_lfo_init(
     verify_lfo_params(&params);
 
     // Precompute LUT, phase, and phase increment
-    const float TWO_PI = 2.0f * (float)M_PI;
-    const float inv_lut_size = 1.0f / (float)LUT_SIZE;
-    for (unsigned i = 0; i < LUT_SIZE; i++)
-    {
-        float angle = TWO_PI * ((float)i) * inv_lut_size;
-        float tmp = (float)(amplitude * sinf(angle));
-        lfo_state.sine_lut[i] = _float2fixed_saturate(tmp,  Q_SIG);
-    }
-    double tmp_phase = (double)((phase_offset * UINT32_MAX) / TWO_PI);
-    double tmp_inc = (double)((frequency * UINT32_MAX) / fs);
+    lfo_state.sine_lut_ptr = (int32_t *)lfo_sine_lut;
+
+    // Precompute phase inc and offset
+    const float TWO_PI = 6.2831855;
+    const float denom_phase = UINT32_MAX / TWO_PI;
+    const float denom_inc = UINT32_MAX / fs;
+    float tmp_phase = phase_offset * denom_phase;
+    float tmp_inc = frequency * denom_inc;
+    
+    // Print intermediate values
+    printf("\n========= C ==============\n");
+    printf("frequency: %.8f\n", frequency);
+    printf("fs: %.8f\n", fs);
+    printf("TWO_PI: %.8f\n", TWO_PI);
+    printf("denom_phase: %.8f\n", denom_phase);
+    printf("denom_inc: %.8f\n", denom_inc);
+    printf("tmp_phase: %.8f\n", tmp_phase);
+    printf("tmp_inc: %.8f\n", tmp_inc);
+    
     lfo_state.phase = (uint32_t)tmp_phase;
-    lfo_state.phase_acc = (uint32_t)tmp_inc;
+    lfo_state.phase_acc = (uint32_t)(tmp_inc);
+    lfo_state.amplitude_q27 = (int32_t)(roundf(amplitude * ((1U << 27) - 1)));
     return params;
 }
 
 // LFO processing
 int32_t adsp_lfo_process(lfo_params_t *module, int32_t in)
 {
-    (void)in; (void)module; // avoid unused parameter warnings, compiler should optimize out
-    uint32_t lut_idx = lfo_state.phase >> LUT_SHR;
+    (void)in; (void)module; // avoid unused parameter warnings
+    uint32_t lut_idx = (lfo_state.phase + (1U << (LFO_LUT_SHR - 1))) >> LFO_LUT_SHR;
+    int32_t lut_val_q27 = lfo_state.sine_lut_ptr[lut_idx];
+    
+    int64_t product = (int64_t)lut_val_q27 * (int64_t)(lfo_state.amplitude_q27); // Q27 * Q27 = Q54
+    int32_t out = (int32_t)(product >> 27); // back to Q27
+    
+    // increment phase
     lfo_state.phase += lfo_state.phase_acc;
-    int32_t out = lfo_state.sine_lut[lut_idx];
     return out;
 }
 
 int32_t adsp_lfo_process_interp(lfo_params_t *module, int32_t in)
 {
-    (void)in; (void)module; // avoid unused parameter warnings, compiler should optimize out
-    uint32_t lut_idx = lfo_state.phase >> LUT_SHR;
-    uint32_t frac = (lfo_state.phase & ((1U << LUT_SHR) - 1)) << 7; // Q27
-    int32_t y0 = lfo_state.sine_lut[lut_idx];
-    int32_t y1 = lfo_state.sine_lut[(lut_idx + 1) & (LUT_SIZE-1)];
-    int32_t out = y0 + (int32_t)(((int64_t)(y1 - y0) * frac) >> 27);
-    lfo_state.phase += lfo_state.phase_acc;
-    return out;
+    return 0;
 }

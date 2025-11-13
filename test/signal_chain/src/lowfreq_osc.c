@@ -39,7 +39,7 @@ static void test_lfo(
 
         // Fill buffer
         for (unsigned i = 0; i < chunk; i++) {
-            arr[i] = adsp_lfo_process(&lfo, offset + i);
+            arr[i] = adsp_lfo_process(&lfo, 0);
         }
 
         // Write chunk

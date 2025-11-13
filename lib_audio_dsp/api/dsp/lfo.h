@@ -1,6 +1,5 @@
 #include <stdint.h>
 
-#define LUT_BITS 12         /* 4096 points sine LUT, 16KB */
 
 // Public
 typedef struct
