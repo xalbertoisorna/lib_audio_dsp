@@ -49,14 +49,7 @@ class low_freq_osc(dsp_block):
         self.phase_inc_xcore = np.uint32(tmp_inc)
         self.amplitude_q27 = np.int32(np.float32(amplitude) * ((1 << Q_SIG) - 1))
         
-        self.print_params(
-            TWO_PI,
-            denom_phase,
-            denom_inc,
-            tmp_phase,
-            tmp_inc
-        )
-
+        # Assertions
         assert(self.frequency < fs / 2)
         assert(self.amplitude <= 1.0)    #TODO discuss
         assert(self.frequency <= 100)    #TODO discuss
