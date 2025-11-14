@@ -319,7 +319,7 @@ def print_results(frequency, mse, thdn_db, diff_abs_max, diff_abs_mean):
   print(f"Mean abs diff:        {diff_abs_mean:.8e}")
   print("=" * 32)
 
-@pytest.mark.parametrize("frequency", [0.0999, 0.1, 0.997, 1.0, 9.97, 10, 11.24, 20, 44, 100])
+@pytest.mark.parametrize("frequency", [0.0999, 0.1, 0.9987, 1.0, 9.97, 10, 11.24, 20, 44, 100])
 @pytest.mark.parametrize("amplitude", [1.0])
 def test_low_freq_osc(frequency, amplitude):
   duration = 1.2
@@ -361,7 +361,6 @@ def test_low_freq_osc(frequency, amplitude):
     file_out.relative_to(cwd),
   ]
   out_c = get_c_wav2(test_dir, run_cmd, verbose=True)
-  #out_c = np.zeros(num_samples)
   
   # cleanup and compare
   shutil.rmtree(test_dir)
@@ -387,7 +386,7 @@ def test_low_freq_osc(frequency, amplitude):
   # mse
   mse = np.mean((out_c - out_py) ** 2)
   mse = np.round(mse)
-
+ 
   print_results(frequency, mse, thdn_db, diff_abs_max, diff_abs_mean)
   np.testing.assert_allclose(out_c, out_py, rtol=rtol, atol=atol, verbose=True) #TODO reduce to 0
   np.testing.assert_array_less(thdn_db, thdn_tol, verbose=True) #TODO reduce

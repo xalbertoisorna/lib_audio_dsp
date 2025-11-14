@@ -7,7 +7,7 @@
 
 #include "dsp/adsp.h"
 
-#define ARR_SIZE 1024*4
+#define ARR_SIZE (1<<16)
 #define PARAMS_FORMAT "%f,%f,%f,%f,%u"   /* fs, frequency, amplitude, phase_offset, num_samples */
 
 static void test_lfo(

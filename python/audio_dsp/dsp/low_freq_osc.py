@@ -17,6 +17,7 @@ class low_freq_osc(dsp_block):
         self.amplitude = amplitude
         self.Q_sig = Q_SIG
         self.lut_qsig = self.Q_sig
+        self.phase_offset = phase_offset
         
         # Python related
         self.phase_inc = (2 * np.pi * self.frequency) / self.fs
@@ -46,10 +47,16 @@ class low_freq_osc(dsp_block):
         tmp_inc = np.float32(frequency_f32 * denom_inc)
         self.phase_xcore = np.uint32(tmp_phase)
         self.phase_inc_xcore = np.uint32(tmp_inc)
-
-        # precompute amplitude in q31
-        self.amplitude_q27 = utils.float_to_fixed(self.amplitude, 27)
+        self.amplitude_q27 = np.int32(np.float32(amplitude) * ((1 << Q_SIG) - 1))
         
+        self.print_params(
+            TWO_PI,
+            denom_phase,
+            denom_inc,
+            tmp_phase,
+            tmp_inc
+        )
+
         assert(self.frequency < fs / 2)
         assert(self.amplitude <= 1.0)    #TODO discuss
         assert(self.frequency <= 100)    #TODO discuss
@@ -78,26 +85,9 @@ class low_freq_osc(dsp_block):
         return float(y)
 
     def process_xcore(self, sample: float = 0.0, channel: int = 0):
-        # Get Lut index and
-        tmp = np.int32(np.int64(self.phase_xcore) + (1 << (self.lut_shr - 1)))
-        lut_idx = tmp >> self.lut_shr
-        lut_val_q27 = np.int32(self.sine_lut[lut_idx])
-        
-        # multiply in q31
-        product = np.int64(np.int64(lut_val_q27) * np.int64(self.amplitude_q27))
-        out_q27 = np.int32(product >> self.lut_qsig)  # back to q27
-
-        # increment phase
-        with np.errstate(over='ignore'):
-            self.phase_xcore = np.uint32(self.phase_xcore + self.phase_inc_xcore)
-
-        out = utils.fixed_to_float(out_q27, Q_SIG)
-        return out
-
-    def process_xcore_interp(self, sample: float = 0.0, channel: int = 0):
-        lut_idx = self.phase_xcore >> self.lut_shr
-        frac = self.phase_xcore & ((1 << self.lut_shr) - 1)
-        frac_q27 = np.int64(frac) << (27 - self.lut_shr)
+        lut_idx = np.uint32(self.phase_xcore >> self.lut_shr)
+        frac = np.uint32(self.phase_xcore & ((1 << self.lut_shr) - 1))
+        frac_q27 = np.int64(np.int64(frac) << (27 - self.lut_shr))
         y0 = np.int64(self.sine_lut[lut_idx])
         y1 = np.int64(self.sine_lut[(lut_idx + 1) & (self.lut_size - 1)])
         interp_q27 = y0 + ((y1 - y0) * frac_q27 >> 27)
@@ -134,7 +124,7 @@ if __name__ == "__main__":
 
     # Parameters
     fs = 48000
-    f = 0.0999
+    f = 0.9987
     duration = 4
     phase_offset = 0.2
     num_samples = int(fs * duration)
