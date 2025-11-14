@@ -366,9 +366,9 @@ def test_low_freq_osc(frequency, amplitude):
   shutil.rmtree(test_dir)
 
   # tols
-  rtol = 7.5e-9   #q27 limit
-  atol = 7.5e-9   #q27 limit
-  thdn_tol = -62.0  #TODO reduce
+  rtol = 0.0
+  atol = 0.0
+  thdn_tol = -84
 
   # diffs
   diff = np.abs(out_c - out_py)
