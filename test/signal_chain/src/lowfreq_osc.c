@@ -30,7 +30,7 @@ static void test_lfo(
     fclose(pf);
 
     // Initialize LFO
-    lfo_params_t lfo = adsp_lfo_init(fs, frequency, amplitude, phase_offset);
+    lfo_component_t lfo = adsp_lfo_init(fs, frequency, amplitude, phase_offset);
     unsigned remaining = num_samples;
     unsigned offset = 0;
 

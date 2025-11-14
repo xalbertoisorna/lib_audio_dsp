@@ -1,9 +1,6 @@
 #include <stdint.h>
 
-#define LFO_LUT_BITS        (12)     /* 4096 points sine LUT, 16KB */
-#define LFO_LUT_SIZE        (1 << LFO_LUT_BITS) 
-#define LFO_LUT_SHR         (32 - LFO_LUT_BITS)
-#define LFO_QSIG            (27)
+#include "dsp/adsp.h"
 
 const int32_t lfo_sine_lut[LFO_LUT_SIZE] = {
 0,
