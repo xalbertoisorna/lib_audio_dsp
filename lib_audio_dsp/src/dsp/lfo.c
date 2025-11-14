@@ -53,21 +53,11 @@ lfo_params_t adsp_lfo_init(
     lfo_state.sine_lut_ptr = (int32_t *)lfo_sine_lut;
 
     // Precompute phase inc and offset
-    const float TWO_PI = 6.2831855;
+    const float TWO_PI = 2.0f * M_PI;
     const float denom_phase = UINT32_MAX / TWO_PI;
     const float denom_inc = UINT32_MAX / fs;
     float tmp_phase = phase_offset * denom_phase;
     float tmp_inc = frequency * denom_inc;
-    
-    // Print intermediate values
-    printf("\n========= C ==============\n");
-    printf("frequency: %.8f\n", frequency);
-    printf("fs: %.8f\n", fs);
-    printf("TWO_PI: %.8f\n", TWO_PI);
-    printf("denom_phase: %.8f\n", denom_phase);
-    printf("denom_inc: %.8f\n", denom_inc);
-    printf("tmp_phase: %.8f\n", tmp_phase);
-    printf("tmp_inc: %.8f\n", tmp_inc);
     
     lfo_state.phase = (uint32_t)tmp_phase;
     lfo_state.phase_acc = (uint32_t)(tmp_inc);
@@ -92,5 +82,28 @@ int32_t adsp_lfo_process(lfo_params_t *module, int32_t in)
 
 int32_t adsp_lfo_process_interp(lfo_params_t *module, int32_t in)
 {
-    return 0;
+    (void)in; (void)module; // avoid unused warnings
+
+    // integer index
+    uint32_t lut_idx = lfo_state.phase >> LFO_LUT_SHR;
+
+    // fractional part
+    uint32_t frac = lfo_state.phase & ((1U << LFO_LUT_SHR) - 1);
+    int64_t frac_q27 = ((int64_t)frac) << (27 - LFO_LUT_SHR);
+
+    // LUT values
+    int64_t y0 = lfo_state.sine_lut_ptr[lut_idx];
+    int64_t y1 = lfo_state.sine_lut_ptr[(lut_idx + 1) & ((1U << LFO_LUT_SHR) - 1)];
+
+    // linear interpolation in Q27
+    int64_t interp_q27 = y0 + ((y1 - y0) * frac_q27 >> 27);
+
+    // multiply by amplitude
+    int64_t product = interp_q27 * (int64_t)lfo_state.amplitude_q27;
+    int32_t out = (int32_t)(product >> 27);
+
+    // increment phase with uint32 wrap
+    lfo_state.phase += lfo_state.phase_acc;
+
+    return out;
 }

@@ -310,6 +310,14 @@ def lfo_write_params(params_file, in_file, fs, frequency, amplitude, ph_offset, 
   with open(in_file, "w") as f:
     f.write("empty on purpose for now\n")  
 
+def print_results(frequency, mse, thdn_db, diff_abs_max, diff_abs_mean):
+  print(f"\n=== LFO Test Results ===")
+  print(f"Frequency (Hz):       {frequency:.8e}")
+  print(f"MSE (pyxc - c):       {mse:.8e}")
+  print(f"THD+N (dB):           {thdn_db:.8e}")
+  print(f"Max abs diff:         {diff_abs_max:.8e}")
+  print(f"Mean abs diff:        {diff_abs_mean:.8e}")
+  print("=" * 32)
 
 @pytest.mark.parametrize("frequency", [0.0999, 0.1, 0.997, 1.0, 9.97, 10, 11.24, 20, 44, 100])
 @pytest.mark.parametrize("amplitude", [1.0])
@@ -353,7 +361,8 @@ def test_low_freq_osc(frequency, amplitude):
     file_out.relative_to(cwd),
   ]
   out_c = get_c_wav2(test_dir, run_cmd, verbose=True)
-
+  #out_c = np.zeros(num_samples)
+  
   # cleanup and compare
   shutil.rmtree(test_dir)
 
@@ -364,10 +373,13 @@ def test_low_freq_osc(frequency, amplitude):
 
   # diffs
   diff = np.abs(out_c - out_py)
+  diff_abs_max = np.max(diff)
+  diff_abs_mean = np.mean(diff) 
 
   # thdn 
-  residual = out_c - ideal
-  power_signal, power_noise = np.mean(out_c ** 2), np.mean(residual ** 2)
+  signal = out_c
+  residual = signal - ideal
+  power_signal, power_noise = np.mean(signal ** 2), np.mean(residual ** 2)
   thdn = np.sqrt(power_noise / power_signal)
   thdn_db = 20 * np.log10(thdn)
   thdn_db = np.round(thdn_db)
@@ -376,14 +388,7 @@ def test_low_freq_osc(frequency, amplitude):
   mse = np.mean((out_c - out_py) ** 2)
   mse = np.round(mse)
 
-  print(f"\n=== LFO Test Results ===")
-  print(f"Frequency (Hz):       {frequency:.8e}")
-  print(f"MSE (pyxc - c):       {mse:.8e}")
-  print(f"THD+N (dB):           {thdn_db:.8e}")
-  print(f"Max abs diff:         {np.max(diff):.8e}")
-  print(f"Mean abs diff:        {np.mean(diff):.8e}")
-  print("=" * 32)
-
+  print_results(frequency, mse, thdn_db, diff_abs_max, diff_abs_mean)
   np.testing.assert_allclose(out_c, out_py, rtol=rtol, atol=atol, verbose=True) #TODO reduce to 0
   np.testing.assert_array_less(thdn_db, thdn_tol, verbose=True) #TODO reduce
 

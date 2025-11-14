@@ -16,6 +16,7 @@ class low_freq_osc(dsp_block):
         self.frequency = frequency
         self.amplitude = amplitude
         self.Q_sig = Q_SIG
+        self.lut_qsig = self.Q_sig
         
         # Python related
         self.phase_inc = (2 * np.pi * self.frequency) / self.fs
@@ -41,21 +42,10 @@ class low_freq_osc(dsp_block):
         TWO_PI = dt(2.0 * np.pi)
         denom_phase = UINT32_MAX / TWO_PI          # float32
         denom_inc = UINT32_MAX / fs_f32            # float32
-        tmp_phase = dt(phase_offset_f32 * denom_phase)
-        tmp_inc = dt(frequency_f32 * denom_inc)
-        tmp_phase_np = np.float32(tmp_phase)
-        tmp_inc_np = np.float32(tmp_inc)
-        self.phase_xcore = np.uint32(tmp_phase_np)
-        self.phase_inc_xcore = np.uint32(tmp_inc_np)
-
-        print("\n========= PYTHON ==============")
-        print(f"frequency: {float(frequency_f32):.8f}")
-        print(f"fs: {float(fs_f32):.8f}")
-        print(f"TWO_PI: {float(TWO_PI):.8f}")
-        print(f"denom_phase: {float(denom_phase):.8f}")
-        print(f"denom_inc: {float(denom_inc):.8f}")
-        print(f"tmp_phase: {float(tmp_phase):.8f}")
-        print(f"tmp_inc: {float(tmp_inc):.8f}")
+        tmp_phase = np.float32(phase_offset_f32 * denom_phase)
+        tmp_inc = np.float32(frequency_f32 * denom_inc)
+        self.phase_xcore = np.uint32(tmp_phase)
+        self.phase_inc_xcore = np.uint32(tmp_inc)
 
         # precompute amplitude in q31
         self.amplitude_q27 = utils.float_to_fixed(self.amplitude, 27)
@@ -65,16 +55,14 @@ class low_freq_osc(dsp_block):
         assert(self.frequency <= 100)    #TODO discuss
 
     def get_lut(self, lut_size):
-        sine_lut_type = np.int32
-        self.sine_lut = np.zeros(lut_size, dtype=sine_lut_type)
+        self.sine_lut = np.zeros(lut_size, dtype=np.int32)
         two_pi = np.float64(2.0 * np.pi)
         inv_lut_size = np.float64(1.0 / lut_size)
         for i in range(lut_size):
             angle = two_pi * i * inv_lut_size
             angle = np.sin(angle)
-            angle_q27 = utils.float_to_fixed(angle, 27)
-            self.sine_lut[i] = angle_q27
-        
+            self.sine_lut[i] = utils.float_to_fixed(angle, self.lut_qsig)
+    
     def save_lut(self, lut_size, filename="lfo_sine_lut.txt"):
         # Precompute LUT
         self.get_lut(lut_size)
@@ -90,21 +78,34 @@ class low_freq_osc(dsp_block):
         return float(y)
 
     def process_xcore(self, sample: float = 0.0, channel: int = 0):
-        
         # Get Lut index and
-        lut_idx = self.phase_xcore + 2**(self.lut_shr - 1) >> self.lut_shr
+        tmp = np.int32(np.int64(self.phase_xcore) + (1 << (self.lut_shr - 1)))
+        lut_idx = tmp >> self.lut_shr
         lut_val_q27 = np.int32(self.sine_lut[lut_idx])
         
         # multiply in q31
         product = np.int64(np.int64(lut_val_q27) * np.int64(self.amplitude_q27))
-        out_q27 = np.int32(product >> 27)  # back to q27
+        out_q27 = np.int32(product >> self.lut_qsig)  # back to q27
 
         # increment phase
         with np.errstate(over='ignore'):
-            self.phase_xcore += self.phase_inc_xcore
+            self.phase_xcore = np.uint32(self.phase_xcore + self.phase_inc_xcore)
 
         out = utils.fixed_to_float(out_q27, Q_SIG)
         return out
+
+    def process_xcore_interp(self, sample: float = 0.0, channel: int = 0):
+        lut_idx = self.phase_xcore >> self.lut_shr
+        frac = self.phase_xcore & ((1 << self.lut_shr) - 1)
+        frac_q27 = np.int64(frac) << (27 - self.lut_shr)
+        y0 = np.int64(self.sine_lut[lut_idx])
+        y1 = np.int64(self.sine_lut[(lut_idx + 1) & (self.lut_size - 1)])
+        interp_q27 = y0 + ((y1 - y0) * frac_q27 >> 27)
+        product = interp_q27 * np.int64(self.amplitude_q27)
+        out_q27 = np.int32(product >> 27)
+        with np.errstate(over='ignore'):
+            self.phase_xcore = np.uint32(self.phase_xcore + self.phase_inc_xcore)
+        return utils.fixed_to_float(out_q27, 27)
 
     def process_samples(self, num_samples: int):
         out = np.zeros(num_samples, dtype=float)
