@@ -13,3 +13,4 @@
 #include "dsp/graphic_eq.h"
 #include "dsp/reverb.h"
 #include "dsp/reverb_plate.h"
+#include "dsp/lfo.h"
